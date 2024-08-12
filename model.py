@@ -264,4 +264,13 @@ class Trasformer(nn.Module):
         src = self.src_embed(src)
         src = self.src_pos(src)
         return self.encode(src, src_mask)
+    
+    def decode(self, encoder_output, src_mask, tgt, tgt_mask):
+        tgt = self.tgt_embed(tgt)
+        tgt = self.tgt_pos(tgt)
+        return self.decoder(tgt, encoder_output, src_mask, tgt_mask)
+    
+    def project(self, x):
+        pass
+
 
