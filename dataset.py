@@ -69,8 +69,8 @@ class BilingualDataset(Dataset):
         return {
             'encoder_input': encoder_input, # (Seq_len)
             'decoder_input': encoder_input, # (Seq_len)
-            'encoder_max': (encoder_input != self.pad_token).unsqueeze(0).unsqueeze(0).int(), # We don't want padding token s to participate in the self-attention.  (1, 1, Seq_len)
-            'decoder_max': (encoder_input != self.pad_token).unsqueeze(0).unsqueeze(0).int() & causal_mask(decoder_input.size(0)), # With causal mask, self-attention can look for each word only on previous words. (1, 1, Seq_len) & (1, Seq_len, Seq_len)
+            'encoder_mask': (encoder_input != self.pad_token).unsqueeze(0).unsqueeze(0).int(), # We don't want padding token s to participate in the self-attention.  (1, 1, Seq_len)
+            'decoder_mask': (encoder_input != self.pad_token).unsqueeze(0).unsqueeze(0).int() & causal_mask(decoder_input.size(0)), # With causal mask, self-attention can look for each word only on previous words. (1, 1, Seq_len) & (1, Seq_len, Seq_len)
             'label': label, # (Seq_len)
             'src_text': src_text,
             'tgt_text': tgt_text
