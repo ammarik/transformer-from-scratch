@@ -122,7 +122,7 @@ def train_model(config):
             decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask) # (B, Seq_len, d_model)
             proj_output = model.project(decoder_output) # Map back to the vocabulary (B, Seq_len, tgt_vocab_size)
 
-            label = batch['label'].to('device') # (B, seq_len)
+            label = batch['label'].to(device) # (B, seq_len)
 
             # (B, Seq_len, tgt_vocab_size) --> (B * Seq_len, tgt_vocab_size)
             loss = loss_fn(proj_output.view(-1, tokenizer_tgt.get_vocab_size()), label.view(-1))

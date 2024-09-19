@@ -9,15 +9,16 @@ class BilingualDataset(Dataset):
     def __init__(self, ds, tokenizer_src, tokenizer_tgt, src_lang, tgt_lang, seq_len) -> None:
         super().__init__()
         
+        self.seq_len = seq_len
         self.ds = ds
         self.tokenizer_src = tokenizer_src 
         self.tokenizer_tgt = tokenizer_tgt 
         self.src_lang = src_lang
         self.tgt_lang = tgt_lang
 
-        self.sos_token = torch.Tensor([tokenizer_src.token_to_id(['[SOS]'])], dtype=torch.int64) # int64... we want it to be a long int, since the vocabulary can be large
-        self.eos_token = torch.Tensor([tokenizer_src.token_to_id(['[EOS]'])], dtype=torch.int64)
-        self.pad_token = torch.Tensor([tokenizer_src.token_to_id(['[PAD]'])], dtype=torch.int64)
+        self.sos_token = torch.tensor([tokenizer_tgt.token_to_id('[SOS]')], dtype=torch.int64) # int64... we want it to be a long int, since the vocabulary can be large
+        self.eos_token = torch.tensor([tokenizer_tgt.token_to_id('[EOS]')], dtype=torch.int64)
+        self.pad_token = torch.tensor([tokenizer_tgt.token_to_id('[PAD]')], dtype=torch.int64)
 
     def __len__(self) -> int:
         return len(self.ds)
@@ -42,7 +43,8 @@ class BilingualDataset(Dataset):
                 torch.tensor(enc_input_tokens, dtype=torch.int64),
                 self.eos_token,
                 torch.tensor([self.pad_token] * enc_num_padding_tokens, dtype=torch.int64)
-            ]
+            ],
+            dim=0,
         )
 
         decoder_input = torch.cat(
@@ -50,7 +52,8 @@ class BilingualDataset(Dataset):
                 self.sos_token,
                 torch.tensor(dec_input_tokens, dtype=torch.int64),
                 torch.tensor([self.pad_token] * dec_num_padding_tokens, dtype=torch.int64)
-            ]
+            ],
+            dim=0,
         )
 
         label = torch.cat(
@@ -58,19 +61,20 @@ class BilingualDataset(Dataset):
                 torch.tensor(dec_input_tokens, dtype=torch.int64),
                 self.eos_token,
                 torch.tensor([self.pad_token] * dec_num_padding_tokens, dtype=torch.int64)
-            ]
+            ],
+            dim=0,
         )
 
-        assert enc_input_tokens.size(0) == self.seq_len
-        assert dec_input_tokens.size(0) == self.seq_len
+        assert encoder_input.size(0) == self.seq_len
+        assert decoder_input.size(0) == self.seq_len
         assert label.size(0) == self.seq_len
 
 
         return {
             'encoder_input': encoder_input, # (Seq_len)
-            'decoder_input': encoder_input, # (Seq_len)
+            'decoder_input': decoder_input, # (Seq_len)
             'encoder_mask': (encoder_input != self.pad_token).unsqueeze(0).unsqueeze(0).int(), # We don't want padding token s to participate in the self-attention.  (1, 1, Seq_len)
-            'decoder_mask': (encoder_input != self.pad_token).unsqueeze(0).unsqueeze(0).int() & causal_mask(decoder_input.size(0)), # With causal mask, self-attention can look for each word only on previous words. (1, 1, Seq_len) & (1, Seq_len, Seq_len)
+            'decoder_mask': (decoder_input != self.pad_token).unsqueeze(0).int() & causal_mask(decoder_input.size(0)), # With causal mask, self-attention can look for each word only on previous words. (1, Seq_len) & (1, Seq_len, Seq_len)
             'label': label, # (Seq_len)
             'src_text': src_text,
             'tgt_text': tgt_text
