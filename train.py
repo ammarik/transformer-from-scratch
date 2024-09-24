@@ -14,10 +14,89 @@ from tokenizers.pre_tokenizers import Whitespace
 from torch.utils.data import Dataset, DataLoader, random_split
 from torch.utils.tensorboard import SummaryWriter
 
+
+def greedy_decode(model, source, source_mask, tokenizer_src, tokenizer_tgt, max_len, device):
+    sos_idx = tokenizer_tgt.token_to_id('[SOS]')
+    eos_idx = tokenizer_tgt.token_to_id('[EOS]')
+
+    # Precompute the encoder output and reuse it for every token we get from the decoder
+    encoder_output = model.encode(source, source_mask)
+    # Initialize the decoder input with the sos token
+    decoder_input = torch.empty(1, 1).fill_(sos_idx).type_as(source).to(device) # Why do we have two dimensions((1,1)) - One is for the batch, one is for tokens of the decoder input
+    while True:
+        if decoder_input.size(1) == max_len:
+            # Stop if output (input of next step) reaches max len
+            break
+        
+        # Build mask for the target (decoder input)
+        decoder_mask = causal_mask(decoder_input.size(1)).type_as(source_mask).to(device)
+        
+        # Calculate the output of the decoder
+        out = model.decode(encoder_output, source_mask, decoder_input, decoder_mask)
+
+        # Get the next token
+        prob = model.project(out[:,-1])
+        # Select the token with the max probability (because it is a greedy search)
+        _, next_word = torch.max(prob, dim=1)
+        
+        # Append the next word to the decoder input
+        decoder_input = torch.cat([decoder_input, torch.empty(1,1).type_as(source).fill_(next_word.item()).to(device)], dim=1)
+
+        if next_word == eos_idx:
+            # Stop if the next word is End Of Sentence token
+            break
+    return decoder_input.squeeze(0) # We remove the batch dimension
+
+
+
+
+
+def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, device, print_msg, global_state, writer, num_examples=2):
+    model.eval()
+    count = 0
+
+    source_texts = []
+    expected = []
+    predicted = []
+
+    # size of the control window (just use a default value)
+    console_width = 80
+
+    with torch.no_grad():
+        for batch in validation_ds:
+            count += 1
+            encoder_input = batch['encoder_input'].to(device)
+            encoder_mask = batch['encoder_mask'].to(device)
+
+            assert encoder_input.size(0) == 1, 'Batch size must be 1 for validation'
+
+            model_output = greedy_decode(model, encoder_input, encoder_mask, tokenizer_src, tokenizer_tgt, max_len, device)
+
+            source_text = batch['src_text'][0]
+            target_text = batch['tgt_text'][0]
+            model_out_text = tokenizer_tgt.decode(model_output.detach().cpu().numpy())
+
+            source_texts.append(source_text)
+            expected.append(target_text)
+            predicted.append(model_out_text) 
+
+            # Print to the console (print_msg comes from tqdm, since we're using tqdm progress bar it's advisable to use print_msg because regular prinft could interfere with it.)
+            print_msg('-'*console_width)
+            print_msg(f'SOURCE: {source_text}')
+            print_msg(f'TARGET: {target_text}')
+            print_msg(f'PREDICTED: {model_out_text}')
+
+            if count == num_examples:
+                break
+            
+
+
+
+
+
 def get_all_sentences(ds, lang):
     for item in ds:
         yield item['translation'][lang]
-
 
 def get_or_build_tokenizer(config, ds, lang):
     # config['tokenizer_file'] == './tokenizers/tokenizer_{0}.json'
@@ -112,6 +191,7 @@ def train_model(config):
         model.train()
         batch_iterator = tqdm(train_dataloader, desc=f'Processing epoch {epoch:02d}')
         for batch in batch_iterator:
+
             encoder_input = batch['encoder_input'].to(device) # (B, Seq_len)
             decoder_input = batch['decoder_input'].to(device) # (B, Seq_len)
             encoder_mask = batch['encoder_mask'].to(device) # (B, 1, 1, Seq_len)
@@ -140,6 +220,8 @@ def train_model(config):
             optimizer.zero_grad()
 
             global_step += 1
+        
+        run_validation(model, val_dataloader, tokenizer_src, tokenizer_tgt, config['seq_len'], device, lambda msg: batch_iterator.write(msg), global_step, writer)
 
         # Save the model at the end of every epoch
         model_filename = get_weights_file_path(config, f'{epoch:02d}')
