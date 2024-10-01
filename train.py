@@ -51,7 +51,7 @@ def greedy_decode(model, source, source_mask, tokenizer_src, tokenizer_tgt, max_
     return decoder_input.squeeze(0) # We remove the batch dimension
 
 
-def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, device, print_msg, global_step, writer, num_examples=2):
+def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, device, print_msg, global_step, epoch, writer, num_examples=2):
     model.eval()
     count = 0
 
@@ -100,19 +100,22 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
         # Compute the char error rate 
         metric = CharErrorRate()
         cer = metric(predicted, expected)
-        writer.add_scalar('validation cer', cer, global_step)
+        print_msg(f'Validation CharErrorRate: {cer}')
+        writer.add_scalar('validation cer', cer, epoch)
         writer.flush()
 
         # Compute the word error rate
         metric = WordErrorRate()
         wer = metric(predicted, expected)
-        writer.add_scalar('validation wer', wer, global_step)
+        print_msg(f'Validation WordErrorRate: {wer}')
+        writer.add_scalar('validation wer', wer, epoch)
         writer.flush()
 
         # Compute the BLEU metric
         metric = BLEUScore()
         bleu = metric(predicted, expected)
-        writer.add_scalar('validation BLEU', bleu, global_step)
+        print_msg(f'Validation BLEUScore: {bleu}')
+        writer.add_scalar('validation BLEU', bleu, epoch)
         writer.flush()
 
 
@@ -246,7 +249,7 @@ def train_model(config):
 
             global_step += 1
         
-        run_validation(model, val_dataloader, tokenizer_src, tokenizer_tgt, config['seq_len'], device, lambda msg: batch_iterator.write(msg), global_step, writer)
+        run_validation(model, val_dataloader, tokenizer_src, tokenizer_tgt, config['seq_len'], device, lambda msg: batch_iterator.write(msg), global_step, epoch, writer, 20)
 
         # Save the model at the end of every epoch
         model_filename = get_weights_file_path(config, f'{epoch:02d}')
